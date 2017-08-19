@@ -103,6 +103,18 @@ func parse_acc(line, state):
 				# TODO: handle new line
 				append_or_create(state, "acc", "")
 			return "parse_acc"
+		else:
+			if tokens[0] == "var":
+				append_signature_or_create(state, "acc", "variable", line)
+			elif tokens[0] == "const":
+				append_signature_or_create(state, "acc", "constant", line)
+			elif tokens[0] == "export":
+				append_signature_or_create(state, "acc", "export", line)
+			elif tokens[0] == "signal":
+				append_signature_or_create(state, "acc", "signal", line)
+			elif tokens[0] == "func":
+				append_signature_or_create(state, "acc", "func", line)
+	return "parse_acc"
 	
 ## Parse header of script. Things like title, tool keyword, extends
 ## are parsed here. As soon as it reach extends it switch to contextual parsing
@@ -126,7 +138,7 @@ func parse_top_level(line, state):
 			prints("extends %s" % tokens[1])
 			# everyting after extends is parsed with main routine
 			return "parse_acc"
-		elif tokens[0] == "##" and tokens.size() >= 2: 
+		if tokens[0] == "##" and tokens.size() >= 2:
 			# special statement - title
 			if tokens[1] == "title:":
 				# collct rest of the title
@@ -154,17 +166,27 @@ func parse_file_docs(line, state):
 func append_or_create(state, type, value):
 	if state.elements.size() != 0:
 		var prev = state.elements[state.elements.size()-1]
-		prints("prev ", prev.type)
 		if prev != null:
 			if prev.type == type:
-				prints("APPEND ")
 				prev.value += value
 				return
-	prints("CREATE ")
 	state.elements.append({
 		type = type,
 		value = value
 	})
+	
+func append_signature_or_create(state, type, newtype, signature):
+	var prev = state.elements.back()
+	if prev != null:
+		if prev.type == type:
+			prev.type = newtype
+			prev.signature = signature
+		else:
+			state.elements.append({
+				type = newtype,
+				value = "",
+				signatre = signature
+			})
 
 ## Collect rest of tokens array as a string
 ## starts from given token (exclusive)
@@ -187,6 +209,8 @@ class JSONRenderer:
 	func save():
 		var f = File.new()
 		f.open(get_file_name(), File.WRITE)
+		if not f.is_open():
+			print("An error occurred when trying to create %s" % get_file_name())
 		f.store_string(result)
 		f.close()
 	
