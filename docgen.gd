@@ -1,6 +1,6 @@
 #
 ## ## ## 
-## doc: docken
+## doc: docgen
 ## title: Simple documentation generator
 ## 
 ## 
@@ -16,9 +16,10 @@ extends SceneTree
 ## Version number. There is no backwords compability
 const VERSION = 1
 
-var dirs = {
-	docs = "res://doc",
-	scripts = []
+var setup = {
+	output_dir = "res://doc",
+	scripts = [],
+	renderers = [JSONRenderer]
 }
 
 func _init():
@@ -28,19 +29,20 @@ func _init():
 	scan_files("res://")
 	create_doc_dir()
 	
-	for s in dirs.scripts:
+	for s in setup.scripts:
 		var st = proces(s)
-		var rend = JSONRenderer.new(st)
-		rend.generate_document()
-		rend.save()
+		for renderer in setup.renderers:
+			var rend = renderer.new(st)
+			rend.generate_document()
+			rend.save()
 	quit()
 	
 func create_doc_dir():
 	var dir = Directory.new()
-	return dir.make_dir(dirs.docs)
+	return dir.make_dir(setup.output_dir)
 	
 
-## scan project directory for *.gd files and add them to dirs Dictionary
+## scan project directory for *.gd files and add them to setup Dictionary
 func scan_files(root):
 	var dir = Directory.new()
 	if dir.open(root) == OK:
@@ -49,7 +51,7 @@ func scan_files(root):
 		while (file_name != ""):
 			if not dir.current_is_dir() and file_name.extension() == "gd":
 #				print("Found script: " + root  + file_name)
-				dirs.scripts.append(root+file_name)
+				setup.scripts.append(root+file_name)
 			elif dir.current_is_dir() and not file_name == ".." and not file_name == ".":
 				scan_files(root+file_name+"/")
 			file_name = dir.get_next()
@@ -60,7 +62,7 @@ func proces(file):
 	var f = File.new()
 	f.open(file, File.READ)
 	var state = {
-		dir = dirs.docs,
+		dir = setup.output_dir,
 		file = file,
 		elements = []
 	}
@@ -85,7 +87,7 @@ func parse_for_doc_enable(line, state):
 	if tokens[0] == "##" and tokens.size() >= 2:
 		if tokens[1] == "doc:":
 			state.output = tokens[2]
-			prints("Generating: %s => %s/%s" % [state.file, dirs.docs, state.output])
+			prints("Generating: %s => %s/%s" % [state.file, setup.output_dir, state.output])
 			return "parse_top_level"
 	return "parse_for_doc_enable"
 	
