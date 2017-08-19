@@ -1,6 +1,6 @@
 #
 ## ## ## 
-## doc: docken.md 
+## doc: docken
 ## title: Simple documentation generator
 ## 
 ## # Usage # H3
@@ -29,8 +29,10 @@ func _init():
 	create_doc_dir()
 	
 	for s in dirs.scripts:
-		proces(s)
-	
+		var st = proces(s)
+		var rend = JSONRenderer.new(st)
+		rend.generate_document()
+		rend.save()
 	quit()
 	
 func create_doc_dir():
@@ -72,6 +74,7 @@ func proces(file):
 	else:
 		prints("An error occurred while loading file %s" % file)
 	f.close()
+	return state
 
 ## Look for `## doc: path/file.md` statement in file
 ## This must be top level statement on top of the file.
@@ -149,3 +152,20 @@ func collect(from, arr, delim=" "):
 	for i in range(from, arr.size()):
 		result += str(arr[i], delim)
 	return result
+	
+class JSONRenderer:
+	var state
+	var result
+	func _init(state):
+		self.state = state
+	func get_file_name():
+		return state.output + ".json"
+	func generate_document():
+		result = state.to_json()
+	func save():
+		var f = File.new()
+		f.open(get_file_name(), File.WRITE)
+		f.store_string(result)
+		f.close()
+	
+		
