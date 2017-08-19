@@ -3,11 +3,11 @@
 ## doc: docken
 ## title: Simple documentation generator
 ## 
+## 
 ## # Usage # H3
 ## `godot -s dockgen.gd`
 ##
-
-# - normal comment
+## - normal comment
 ## normal text
 ## # h3 comment
 ## ## h4
@@ -38,9 +38,10 @@ func _init():
 func create_doc_dir():
 	var dir = Directory.new()
 	return dir.make_dir(dirs.docs)
+	
 
+## scan project directory for *.gd files and add them to dirs Dictionary
 func scan_files(root):
-	"scan project directory for *.gd files and add them to dirs Dictionary"
 	var dir = Directory.new()
 	if dir.open(root) == OK:
 		dir.list_dir_begin()
@@ -76,7 +77,7 @@ func proces(file):
 		prints("An error occurred while loading file %s" % file)
 	f.close()
 	return state
-
+	
 ## Look for `## doc: path/file.md` statement in file
 ## This must be top level statement on top of the file.
 func parse_for_doc_enable(line, state):
@@ -87,6 +88,21 @@ func parse_for_doc_enable(line, state):
 			prints("Generating: %s => %s/%s" % [state.file, dirs.docs, state.output])
 			return "parse_top_level"
 	return "parse_for_doc_enable"
+	
+## Parse code looking for functions, class variables and inner classes.
+## Takes indentation into account.
+func parse_acc(line, state):
+	var tokens = line.split(" ")
+	if tokens.size() > 0:
+		# top level comment - next line might be a function or variable
+		if tokens[0] == "##":
+			if tokens.size() > 1:
+				append_or_create(state, "acc", collect(1, tokens))
+			# empty comment
+			else:
+				# TODO: handle new line
+				append_or_create(state, "acc", "")
+			return "parse_acc"
 	
 ## Parse header of script. Things like title, tool keyword, extends
 ## are parsed here. As soon as it reach extends it switch to contextual parsing
@@ -108,7 +124,8 @@ func parse_top_level(line, state):
 				value = tokens[1]
 			})
 			prints("extends %s" % tokens[1])
-			return "parse_top_level"
+			# everyting after extends is parsed with main routine
+			return "parse_acc"
 		elif tokens[0] == "##" and tokens.size() >= 2: 
 			# special statement - title
 			if tokens[1] == "title:":
@@ -121,8 +138,8 @@ func parse_top_level(line, state):
 				prints( "TITLE: %s" % title )
 				return "parse_top_level"
 			else:
-				# TODO - file documentation
-				pass
+				append_or_create(state, "file_documentation", collect(1, tokens) + "\n")
+				return "parse_top_level"
 	return "parse_top_level"
 			
 func parse_file_docs(line, state):
@@ -135,15 +152,19 @@ func parse_file_docs(line, state):
 ## Create new element or append if previous
 ## has the same type.
 func append_or_create(state, type, value):
-	var prev = state.elements.back()
-	if prev != null:
-		if prev.type == type:
-			prev.value += value
-	else:
-		state.elements.append({
-			type = type,
-			value = value
-		})
+	if state.elements.size() != 0:
+		var prev = state.elements[state.elements.size()-1]
+		prints("prev ", prev.type)
+		if prev != null:
+			if prev.type == type:
+				prints("APPEND ")
+				prev.value += value
+				return
+	prints("CREATE ")
+	state.elements.append({
+		type = type,
+		value = value
+	})
 
 ## Collect rest of tokens array as a string
 ## starts from given token (exclusive)
