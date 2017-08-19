@@ -59,6 +59,7 @@ func proces(file):
 	var f = File.new()
 	f.open(file, File.READ)
 	var state = {
+		dir = dirs.docs,
 		file = file,
 		elements = []
 	}
@@ -159,7 +160,7 @@ class JSONRenderer:
 	func _init(state):
 		self.state = state
 	func get_file_name():
-		return state.output + ".json"
+		return "%s/%s.json" % [ state.dir, state.output ]
 	func generate_document():
 		result = state.to_json()
 	func save():
