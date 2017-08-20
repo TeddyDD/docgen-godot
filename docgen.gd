@@ -177,11 +177,11 @@ func append_or_create(state, type, value):
 		var prev = state.elements[state.elements.size()-1]
 		if prev != null:
 			if prev.type == type:
-				prev.value += value
+				prev.value.append(value)
 				return
 	state.elements.append({
 		type = type,
-		value = value
+		value = [value]
 	})
 	
 func append_signature_or_create(state, type, newtype, signature, name):
@@ -194,14 +194,14 @@ func append_signature_or_create(state, type, newtype, signature, name):
 		else:
 			state.elements.append({
 				type = newtype,
-				value = "",
-				signatre = signature,
+				value = [],
+				signature = signature,
 				name = name
 			})
 
 func match_top_level(line):
 	var reg = RegEx.new()
-	reg.compile("^(signal|func|var|const)\\s([\\w_]+)(.+)?", 4)
+	reg.compile("^(static func|func|class|signal|var|onready var|const)\\s([\\w_-]+)(.+)?", 4)
 #	if not reg.is_valid():
 #		prints("ERROR: REGEX")
 	if reg.find(line) == 0:
@@ -230,9 +230,14 @@ func collect(from, arr, delim=" "):
 		result += str(arr[i], delim)
 	return result
 	
+## Basic renderer for docgen
+## emits single markdown object witch is dump of parser state
+## It's useful for debug but it might be used by external scripts to 
+## generate different formats of documentation.
 class JSONRenderer:
 	var state
 	var result
+	## gets parser state at initialization
 	func _init(state):
 		self.state = state
 	func get_file_name():
