@@ -24,7 +24,7 @@ var setup = {
 
 func _init():
 	"This function is executed when you exec script from commandline"
-	prints("DOCKGEN v%s" % VERSION)
+	prints("DOCGEN v%s" % VERSION)
 	prints("=============")
 	scan_files("res://")
 	create_doc_dir()
@@ -37,11 +37,12 @@ func _init():
 			rend.save()
 	quit()
 	
+## Create doumentation directory
+## It's `res://doc` by default
 func create_doc_dir():
 	var dir = Directory.new()
 	return dir.make_dir(setup.output_dir)
 	
-
 ## scan project directory for *.gd files and add them to setup Dictionary
 func scan_files(root):
 	var dir = Directory.new()
@@ -69,8 +70,9 @@ func proces(file):
 	var nextState = "parse_for_doc_enable"
 	var line = ""
 	if f.is_open():
-#		prints("Check: %s" % file)
 		while not f.eof_reached():
+			# Each parsing function call process one line of code.
+			# Parsing function have to return next function to call or `end`
 			if nextState == "end":
 				break
 			line = f.get_line()
@@ -106,16 +108,18 @@ func parse_acc(line, state):
 				append_or_create(state, "acc", "")
 			return "parse_acc"
 		else:
-			if tokens[0] == "var":
-				append_signature_or_create(state, "acc", "variable", line)
-			elif tokens[0] == "const":
-				append_signature_or_create(state, "acc", "constant", line)
-			elif tokens[0] == "export":
-				append_signature_or_create(state, "acc", "export", line)
-			elif tokens[0] == "signal":
-				append_signature_or_create(state, "acc", "signal", line)
-			elif tokens[0] == "func":
-				append_signature_or_create(state, "acc", "func", line)
+			var test = match_top_level(line)
+			if test != null:
+				if test[1] == "var":
+					append_signature_or_create(state, "acc", "variable", line, test[2])
+				elif test[1] == "const":
+					append_signature_or_create(state, "acc", "constant", line, test[2])
+				elif test[1] == "export":
+					append_signature_or_create(state, "acc", "export", line, null)
+				elif test[1] == "signal":
+					append_signature_or_create(state, "acc", "signal", line, test[2])
+				elif test[1] == "func":
+					append_signature_or_create(state, "acc", "func", line, test[2])
 	return "parse_acc"
 	
 ## Parse header of script. Things like title, tool keyword, extends
@@ -177,18 +181,29 @@ func append_or_create(state, type, value):
 		value = value
 	})
 	
-func append_signature_or_create(state, type, newtype, signature):
+func append_signature_or_create(state, type, newtype, signature, name):
 	var prev = state.elements.back()
 	if prev != null:
 		if prev.type == type:
 			prev.type = newtype
 			prev.signature = signature
+			prev.name = name
 		else:
 			state.elements.append({
 				type = newtype,
 				value = "",
-				signatre = signature
+				signatre = signature,
+				name = name
 			})
+
+func match_top_level(line):
+	var reg = RegEx.new()
+	reg.compile("^(signal|func|var|const)\\s([\\w_]+)(.+)?", 4)
+#	if not reg.is_valid():
+#		prints("ERROR: REGEX")
+	if reg.find(line) == 0:
+		return Array(reg.get_captures())
+	else: return null
 
 ## Collect rest of tokens array as a string
 ## starts from given token (exclusive)
@@ -215,5 +230,3 @@ class JSONRenderer:
 			print("An error occurred when trying to create %s" % get_file_name())
 		f.store_string(result)
 		f.close()
-	
-		
