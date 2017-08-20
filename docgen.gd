@@ -93,9 +93,27 @@ func parse_for_doc_enable(line, state):
 			return "parse_top_level"
 	return "parse_for_doc_enable"
 	
+func parse_class(line, state):
+	var st = state.elements.back()
+#	prints(st)
+	var tab = RegEx.new()
+	# at lest one tab
+	tab.compile("^\\t(.*)")
+	if tab.find(line) != 0:
+		st.type = "class"
+		return "parse_acc"
+	else:
+		prints("in class parse line: %s" % tab.get_capture(1))
+		parse_acc(tab.get_capture(1), st)
+#		prints("found: %s" % st.elements.back().type)
+		return "parse_class"
+		
 ## Parse code looking for functions, class variables and inner classes.
 ## Takes indentation into account.
 func parse_acc(line, state):
+#	if state.elements.back().type == "class_acc":
+#		var st = state.elements.back()
+#	else: st == state
 	var tokens = line.split(" ")
 	if tokens.size() > 0:
 		# top level comment - next line might be a function or variable
@@ -110,19 +128,29 @@ func parse_acc(line, state):
 		else:
 			var test = match_top_level(line)
 			if test != null:
-				if test[1] == "var":
+				if test[1] == "var": 
 					append_signature_or_create(state, "acc", "variable", line, test[2])
+				elif test[1] == "onready var": 
+					append_signature_or_create(state, "acc", "variable", line, test[2])
+					state.elements.back().onready_var = true
 				elif test[1] == "const":
 					append_signature_or_create(state, "acc", "constant", line, test[2])
 				elif test[1] == "signal":
 					append_signature_or_create(state, "acc", "signal", line, test[2])
 				elif test[1] == "func":
 					append_signature_or_create(state, "acc", "func", line, test[2])
+				elif test[1] == "static func":
+					append_signature_or_create(state, "acc", "func", line, test[2])
+					state.elements.back().static_func = true
+				elif test[1] == "class":
+					append_signature_or_create(state, "acc", "class_acc", line, test[2])
+					state.elements.back().elements = []
+					return "parse_class"
 			elif tokens[0] == "export":
 					var test = match_export(line)
 					append_signature_or_create(state, "acc", "export", line, test[2])
 					state.elements.back().editor_hint = test[1]
-					state.elements.back().default_value = test[3]
+					state.elements.back().default_valu31e = test[3]
 	return "parse_acc"
 	
 ## Parse header of script. Things like title, tool keyword, extends
