@@ -114,12 +114,15 @@ func parse_acc(line, state):
 					append_signature_or_create(state, "acc", "variable", line, test[2])
 				elif test[1] == "const":
 					append_signature_or_create(state, "acc", "constant", line, test[2])
-				elif test[1] == "export":
-					append_signature_or_create(state, "acc", "export", line, null)
 				elif test[1] == "signal":
 					append_signature_or_create(state, "acc", "signal", line, test[2])
 				elif test[1] == "func":
 					append_signature_or_create(state, "acc", "func", line, test[2])
+			elif tokens[0] == "export":
+					var test = match_export(line)
+					append_signature_or_create(state, "acc", "export", line, test[2])
+					state.elements.back().editor_hint = test[1]
+					state.elements.back().default_value = test[3]
 	return "parse_acc"
 	
 ## Parse header of script. Things like title, tool keyword, extends
@@ -201,6 +204,19 @@ func match_top_level(line):
 	reg.compile("^(signal|func|var|const)\\s([\\w_]+)(.+)?", 4)
 #	if not reg.is_valid():
 #		prints("ERROR: REGEX")
+	if reg.find(line) == 0:
+		return Array(reg.get_captures())
+	else: return null
+	
+## match export statement using regex
+## returns caputre groups array or null
+## - 0 - whole match
+## - 1 - editor hint if any
+## - 2 - name
+## - 3 - default value if any
+func match_export(line):
+	var reg = RegEx.new()
+	reg.compile("^export(?:\\((.+)\\))?\\svar\\s([\\w_]+)(?:\\s?=)?([^#]+)")
 	if reg.find(line) == 0:
 		return Array(reg.get_captures())
 	else: return null
