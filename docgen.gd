@@ -172,9 +172,9 @@ func parse_enum_begin(line, state):
 		# cut last } if exist
 		# find all enums in first line
 		if r != null:
-			for e in r[1].split(","):
+			for e in r[1].strip_edges().split(","):
 				prints("WHY", state.elements.back())
-				state.elements.back().enums.append( e )
+				state.elements.back().enums.append( e.strip_edges() )
 		if test[2].find("}") != -1: # found closing bracket
 			change_type_or_create(state, "enum_acc", "enum", line, name)
 			return "parse_acc"
@@ -185,10 +185,11 @@ func parse_enum_definition(line,state):
 	var test = match_before_closing_brace(line)
 	if test != null:
 		if test[1] != "":
-			state.elements.back().enums.append(test[1].strip_edges().split(","))
-		if line.find("}") != -1:
-			change_type_or_create(state, "enum_acc", "enum", state.elements.back().signature, state.elements.back().name)
-			return "parse_acc"
+			for e in test[1].strip_edges().split(",", false):
+				state.elements.back().enums.append(e.strip_edges())
+	if line.find("}") != -1:
+		change_type_or_create(state, "enum_acc", "enum", state.elements.back().signature, state.elements.back().name)
+		return "parse_acc"
 	return "parse_enum_definition"
 	
 ## Parse header of script. Things like title, tool keyword, extends
@@ -323,7 +324,7 @@ func match_enum_definiton(line):
 	
 func match_before_closing_brace(line):
 	var reg = RegEx.new()
-	reg.compile("\\t?(.+)}")
+	reg.compile("([^}]+)}?")
 	if reg.find(line) == 0:
 		return Array(reg.get_captures())
 	else: return null
