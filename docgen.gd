@@ -15,7 +15,7 @@ const VERSION = "0.1"
 var setup = {
 	output_dir = "res://doc",
 	scripts = [],
-	renderers = [JSONRenderer]
+	generators = [JSONGenerator]
 }
 
 ## This function is executed when you exec `docgen.gd` script from command line.
@@ -27,8 +27,10 @@ func _init():
 	
 	for s in setup.scripts:
 		var st = proces(s)
-		for renderer in setup.renderers:
-			var rend = renderer.new(st)
+		if st.output == null:
+			continue
+		for gen in setup.generators:
+			var rend = gen.new(st)
 			rend.generate_document()
 			rend.save()
 	quit()
@@ -48,7 +50,6 @@ func scan_files(root):
 		var file_name = dir.get_next()
 		while (file_name != ""):
 			if not dir.current_is_dir() and file_name.extension() == "gd":
-#				print("Found script: " + root  + file_name)
 				setup.scripts.append(root+file_name)
 			elif dir.current_is_dir() and not file_name == ".." and not file_name == ".":
 				scan_files(root+file_name+"/")
@@ -66,6 +67,7 @@ func proces(file):
 	var state = {
 		dir = setup.output_dir,
 		file = file,
+		output = null,
 		elements = []
 	}
 	var nextState = "parse_for_doc_enable"
@@ -125,7 +127,6 @@ func parse_acc(line, state):
 				append_or_create(state, "acc", collect(1, tokens))
 			else:
 				# empty comment
-				# TODO - collect should accept empty string 
 				append_or_create(state, "acc", "")
 			return "parse_acc"
 		else:
@@ -149,13 +150,17 @@ func parse_acc(line, state):
 					change_type_or_create(state, "acc", "class_acc", line, test[2])
 					state.elements.back().elements = []
 					return "parse_class"
-			elif tokens[0] == "enum":
-				return parse_enum_begin(line, state)
-			elif tokens[0] == "export":
+			elif tokens[0].match("export*"):
+				prints("export %s" % line)
 				var test = match_export(line)
 				change_type_or_create(state, "acc", "export", line, test[2])
+				assert(state.elements != [])
 				state.elements.back().editor_hint = test[1]
 				state.elements.back().default_value = test[3]
+			elif tokens[0] == "enum":
+				return parse_enum_begin(line, state)
+			else:
+				prints(tokens)
 	return "parse_acc"
 	
 func parse_enum_begin(line, state):
@@ -173,7 +178,6 @@ func parse_enum_begin(line, state):
 		# find all enums in first line
 		if r != null:
 			for e in r[1].strip_edges().split(","):
-				prints("WHY", state.elements.back())
 				state.elements.back().enums.append( e.strip_edges() )
 		if test[2].find("}") != -1: # found closing bracket
 			change_type_or_create(state, "enum_acc", "enum", line, name)
@@ -292,7 +296,7 @@ func match_top_level(line):
 ## - 3 - default value if any
 func match_export(line):
 	var reg = RegEx.new()
-	reg.compile("^export(?:\\((.+)\\))?\\svar\\s([\\w_]+)(?:\\s?=)?([^#]+)")
+	reg.compile("export\\s?(?:\\((.+)\\))?\\svar\\s([\\w_-]+)(?:\\s?=([^#]+))?")
 	if reg.find(line) == 0:
 		return Array(reg.get_captures())
 	else: return null
@@ -340,15 +344,18 @@ func match_indent(line):
 	else:
 		return null
 	
-#==========#
-# Renderer #
-#==========#
+#============#
+# Generators #
+#============#
 
-## Basic renderer for docgen
+class MarkdownGenerator:
+	var state
+
+## Basic generator for docgen
 ## emits single markdown object witch is dump of parser state
 ## It's useful for debug but it might be used by external scripts to 
 ## generate different formats of documentation.
-class JSONRenderer:
+class JSONGenerator:
 	var state
 	var result
 	## gets parser state at initialization
