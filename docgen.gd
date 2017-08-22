@@ -1,29 +1,25 @@
-#
-## ## ## 
 ## doc: docgen
-## title: Simple documentation generator
+## title: docgen - documentation generator for *GDScript*
 ## 
-## 
-## # Usage # H3
+## ## Usage
+## Run from project directory:
 ## `godot -s dockgen.gd`
 ##
-## - normal comment
-## normal text
-## # h3 comment
-## ## h4
-
 extends SceneTree
-## Version number. There is no backwords compability
-const VERSION = 1
 
+## Version number following [Semver specs](http://semver.org/)
+const VERSION = "0.1"
+
+## Setup allows you to customize behavoiur of docgen
+# TODO - config in docgen_conf.gd
 var setup = {
 	output_dir = "res://doc",
 	scripts = [],
 	renderers = [JSONRenderer]
 }
 
+## This function is executed when you exec `docgen.gd` script from command line.
 func _init():
-	"This function is executed when you exec script from commandline"
 	prints("DOCGEN v%s" % VERSION)
 	prints("=============")
 	scan_files("res://")
@@ -43,7 +39,8 @@ func create_doc_dir():
 	var dir = Directory.new()
 	return dir.make_dir(setup.output_dir)
 	
-## scan project directory for *.gd files and add them to setup Dictionary
+## Scan project directory recursivly for *.gd files.
+## Found files are added to scripts array in `setup` Dictionary
 func scan_files(root):
 	var dir = Directory.new()
 	if dir.open(root) == OK:
@@ -59,6 +56,10 @@ func scan_files(root):
 	else:
 		print("An error occurred when trying to access the path: %s" % root)
 
+## This function is called for every GDScript file found in project.
+## If file contans `## doc: filename` instruction, documentation will be generated.
+## Parsing pattern was inspired by [Rob Pike's](https://www.youtube.com/watch?v=HxaD_trXwRE&t=1529s)
+## talk about writing lexers in Go.
 func proces(file):
 	var f = File.new()
 	f.open(file, File.READ)
@@ -81,9 +82,14 @@ func proces(file):
 		prints("An error occurred while loading file %s" % file)
 	f.close()
 	return state
-	
+
+#===================#
+# Parsing functions #
+#===================#
+
 ## Look for `## doc: path/file.md` statement in file
-## This must be top level statement on top of the file.
+## This should be on top of the file. All documentation before
+## this statement will be discarded.
 func parse_for_doc_enable(line, state):
 	var tokens = line.split(" ")
 	if tokens[0] == "##" and tokens.size() >= 2:
@@ -93,9 +99,9 @@ func parse_for_doc_enable(line, state):
 			return "parse_top_level"
 	return "parse_for_doc_enable"
 	
+## Parse inner classes.
 func parse_class(line, state):
 	var st = state.elements.back()
-#	prints(st)
 	var tab = RegEx.new()
 	# at lest one tab
 	tab.compile("^\\t(.*)")
@@ -103,55 +109,87 @@ func parse_class(line, state):
 		st.type = "class"
 		return "parse_acc"
 	else:
-		prints("in class parse line: %s" % tab.get_capture(1))
 		parse_acc(tab.get_capture(1), st)
-#		prints("found: %s" % st.elements.back().type)
 		return "parse_class"
 		
 ## Parse code looking for functions, class variables and inner classes.
-## Takes indentation into account.
+## Acummulates result until top level declaration is found
+## Documentation of given element (function/variable etc.)
+## has to be written *before* that element.
 func parse_acc(line, state):
-#	if state.elements.back().type == "class_acc":
-#		var st = state.elements.back()
-#	else: st == state
 	var tokens = line.split(" ")
 	if tokens.size() > 0:
 		# top level comment - next line might be a function or variable
 		if tokens[0] == "##":
 			if tokens.size() > 1:
 				append_or_create(state, "acc", collect(1, tokens))
-			# empty comment
 			else:
-				# TODO: handle new line
+				# empty comment
+				# TODO - collect should accept empty string 
 				append_or_create(state, "acc", "")
 			return "parse_acc"
 		else:
 			var test = match_top_level(line)
 			if test != null:
 				if test[1] == "var": 
-					append_signature_or_create(state, "acc", "variable", line, test[2])
+					change_type_or_create(state, "acc", "variable", line, test[2])
 				elif test[1] == "onready var": 
-					append_signature_or_create(state, "acc", "variable", line, test[2])
+					change_type_or_create(state, "acc", "variable", line, test[2])
 					state.elements.back().onready_var = true
 				elif test[1] == "const":
-					append_signature_or_create(state, "acc", "constant", line, test[2])
+					change_type_or_create(state, "acc", "constant", line, test[2])
 				elif test[1] == "signal":
-					append_signature_or_create(state, "acc", "signal", line, test[2])
+					change_type_or_create(state, "acc", "signal", line, test[2])
 				elif test[1] == "func":
-					append_signature_or_create(state, "acc", "func", line, test[2])
+					change_type_or_create(state, "acc", "func", line, test[2])
 				elif test[1] == "static func":
-					append_signature_or_create(state, "acc", "func", line, test[2])
+					change_type_or_create(state, "acc", "func", line, test[2])
 					state.elements.back().static_func = true
 				elif test[1] == "class":
-					append_signature_or_create(state, "acc", "class_acc", line, test[2])
+					change_type_or_create(state, "acc", "class_acc", line, test[2])
 					state.elements.back().elements = []
 					return "parse_class"
+			elif tokens[0] == "enum":
+				return parse_enum_begin(line, state)
 			elif tokens[0] == "export":
-					var test = match_export(line)
-					append_signature_or_create(state, "acc", "export", line, test[2])
-					state.elements.back().editor_hint = test[1]
-					state.elements.back().default_valu31e = test[3]
+				var test = match_export(line)
+				change_type_or_create(state, "acc", "export", line, test[2])
+				state.elements.back().editor_hint = test[1]
+				state.elements.back().default_value = test[3]
 	return "parse_acc"
+	
+func parse_enum_begin(line, state):
+	var test = match_enum(line)
+	# get name
+	if test == null:
+		return "parse_acc"
+	var name = test[1]
+	change_type_or_create(state, "acc", "enum_acc", line, name)
+	state.elements.back().enums = []
+	# get enums from first line
+	if test[2] != "": # non empty first line
+		var r = match_before_closing_brace(test[2])
+		# cut last } if exist
+		# find all enums in first line
+		if r != null:
+			for e in r[1].split(","):
+				prints("WHY", state.elements.back())
+				state.elements.back().enums.append( e )
+		if test[2].find("}") != -1: # found closing bracket
+			change_type_or_create(state, "enum_acc", "enum", line, name)
+			return "parse_acc"
+	return "parse_enum_definition"
+	
+func parse_enum_definition(line,state):
+	state.elements.back().signature += line
+	var test = match_before_closing_brace(line)
+	if test != null:
+		if test[1] != "":
+			state.elements.back().enums.append(test[1].strip_edges().split(","))
+		if line.find("}") != -1:
+			change_type_or_create(state, "enum_acc", "enum", state.elements.back().signature, state.elements.back().name)
+			return "parse_acc"
+	return "parse_enum_definition"
 	
 ## Parse header of script. Things like title, tool keyword, extends
 ## are parsed here. As soon as it reach extends it switch to contextual parsing
@@ -165,14 +203,12 @@ func parse_top_level(line, state):
 				type = "tool",
 				value = true
 			})
-			prints("ISTOOL")
 			return "parse_top_level"
 		if tokens[0] == "extends": # and tokens.size() == 2:
 			state.elements.append({
 				type = "extends",
 				value = tokens[1]
 			})
-			prints("extends %s" % tokens[1])
 			# everyting after extends is parsed with main routine
 			return "parse_acc"
 		if tokens[0] == "##" and tokens.size() >= 2:
@@ -184,19 +220,16 @@ func parse_top_level(line, state):
 					type = "title",
 					value = title
 				})
-				prints( "TITLE: %s" % title )
 				return "parse_top_level"
 			else:
 				append_or_create(state, "file_documentation", collect(1, tokens) + "\n")
 				return "parse_top_level"
 	return "parse_top_level"
 			
-func parse_file_docs(line, state):
-	var tokens = line.split(" ")
-	if tokens[1] == "\t" or tokens[1] == "":
-		pass # next element
-	for i in range(tokens.size()):
-		pass
+
+#================#
+# parser helpers #
+#================#
 
 ## Create new element or append if previous
 ## has the same type.
@@ -212,7 +245,10 @@ func append_or_create(state, type, value):
 		value = [value]
 	})
 	
-func append_signature_or_create(state, type, newtype, signature, name):
+## If type of previous element equal param, it's changed to newtype
+## otherwise new element is added with newtype. It's usefull
+## when parser acumulates comments.
+func change_type_or_create(state, type, newtype, signature, name):
 	var prev = state.elements.back()
 	if prev != null:
 		if prev.type == type:
@@ -226,12 +262,23 @@ func append_signature_or_create(state, type, newtype, signature, name):
 				signature = signature,
 				name = name
 			})
+			
+## Collect rest of tokens array as a string
+## starts from given token (exclusive)
+## default delimeter is a space
+func collect(from, arr, delim=" "):
+	var result = ""
+	for i in range(from, arr.size()):
+		result += str(arr[i], delim)
+	return result
+
+#=========#
+# Regexes #
+#=========#
 
 func match_top_level(line):
 	var reg = RegEx.new()
 	reg.compile("^(static func|func|class|signal|var|onready var|const)\\s([\\w_-]+)(.+)?", 4)
-#	if not reg.is_valid():
-#		prints("ERROR: REGEX")
 	if reg.find(line) == 0:
 		return Array(reg.get_captures())
 	else: return null
@@ -248,16 +295,54 @@ func match_export(line):
 	if reg.find(line) == 0:
 		return Array(reg.get_captures())
 	else: return null
-
-## Collect rest of tokens array as a string
-## starts from given token (exclusive)
-## default delimeter is a space
-func collect(from, arr, delim=" "):
-	var result = ""
-	for i in range(from, arr.size()):
-		result += str(arr[i], delim)
-	return result
 	
+## Match enum definion
+## Capture groups:
+## - 0 - whole match
+## - 1 - enum name if any
+## - 2 - rest of the line without `{`, might be empty
+func match_enum(line):
+	var reg = RegEx.new()
+	reg.compile("^enum\\s([\\w-_]+)?\\s?{(.+)?")
+	if reg.find(line) == 0:
+		return Array(reg.get_captures())
+	else: return null
+	
+## Match open and close backet of enum definition
+## Caputre groups:
+## - 0 - whole match
+## - 1 - { or empty
+## - 2 - enum definition
+## - 3 - } or empty
+func match_enum_definiton(line):
+	var reg = RegEx.new()
+	reg.compile("({)(.+)(})")
+	if reg.find(line) == 0:
+		return Array(reg.get_captures())
+	else: return null
+	
+func match_before_closing_brace(line):
+	var reg = RegEx.new()
+	reg.compile("\\t?(.+)}")
+	if reg.find(line) == 0:
+		return Array(reg.get_captures())
+	else: return null
+	
+## Checks if line has at leas one level of indentation.
+## If that's true then returns line with removed first tabulation.
+## Otherwise returns `null`
+func match_indent(line):
+	var tab = RegEx.new()
+	tab.compile("^\\t(.*)")
+	if tab.find(line) == 0:
+		return tab.get_capture(1)
+	else:
+		return null
+	
+#==========#
+# Renderer #
+#==========#
+
 ## Basic renderer for docgen
 ## emits single markdown object witch is dump of parser state
 ## It's useful for debug but it might be used by external scripts to 
