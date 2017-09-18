@@ -1,6 +1,12 @@
 ## doc: docgen
 ## title: docgen - documentation generator for *GDScript*
 ## 
+## This script allows to generate documentation form annotated GDScript files. Annotation format is
+## really simple, it uses `##`.
+## Suppored export formats are:
+## - Markdown
+## - json (for further processing)
+##
 ## ## Usage
 ## Run from project directory:
 ## `godot -s dockgen.gd`
@@ -15,7 +21,7 @@ const VERSION = "0.1"
 var setup = {
 	output_dir = "res://doc",
 	scripts = [],
-	generators = [JSONGenerator]
+	generators = [MarkdownGenerator, JSONGenerator]
 }
 
 ## This function is executed when you exec `docgen.gd` script from command line.
@@ -30,9 +36,10 @@ func _init():
 		if st.output == null:
 			continue
 		for gen in setup.generators:
-			var rend = gen.new(st)
-			rend.generate_document()
-			rend.save()
+			var g = gen.new(st)
+			prints("Generating: %s => %s" % [st.file, g.get_file_name()])
+			g.generate_document()
+			g.save()
 	quit()
 	
 ## Create doumentation directory
@@ -97,7 +104,6 @@ func parse_for_doc_enable(line, state):
 	if tokens[0] == "##" and tokens.size() >= 2:
 		if tokens[1] == "doc:":
 			state.output = tokens[2]
-			prints("Generating: %s => %s/%s" % [state.file, setup.output_dir, state.output])
 			return "parse_top_level"
 	return "parse_for_doc_enable"
 	
@@ -141,26 +147,33 @@ func parse_acc(line, state):
 					change_type_or_create(state, "acc", "constant", line, test[2])
 				elif test[1] == "signal":
 					change_type_or_create(state, "acc", "signal", line, test[2])
-				elif test[1] == "func":
-					change_type_or_create(state, "acc", "func", line, test[2])
-				elif test[1] == "static func":
-					change_type_or_create(state, "acc", "func", line, test[2])
-					state.elements.back().static_func = true
+				elif test[1] == "func" or test[1] == 'static func':
+					return parse_method(line, state)
 				elif test[1] == "class":
 					change_type_or_create(state, "acc", "class_acc", line, test[2])
 					state.elements.back().elements = []
 					return "parse_class"
 			elif tokens[0].match("export*"):
-				prints("export %s" % line)
 				var test = match_export(line)
 				change_type_or_create(state, "acc", "export", line, test[2])
-				assert(state.elements != [])
 				state.elements.back().editor_hint = test[1]
 				state.elements.back().default_value = test[3]
 			elif tokens[0] == "enum":
 				return parse_enum_begin(line, state)
-			else:
-				prints(tokens)
+	return "parse_acc"
+	
+func parse_method(line, state):
+	line = line.strip_edges()
+	var test = match_method(line)
+	change_type_or_create(state, "acc", "method", line, test[2])
+	if test[1] == "static":
+		state.elements.back().static_func = true
+	if test[3] != "":
+		var params = test[3].split(',')
+		for i in range(params.size()):
+			params[i] = params[i].strip_edges()
+		if state.elements.back() != null:
+			state.elements.back().params = params
 	return "parse_acc"
 	
 func parse_enum_begin(line, state):
@@ -206,13 +219,13 @@ func parse_top_level(line, state):
 		if tokens[0] == "tool":
 			state.elements.append({
 				type = "tool",
-				value = true
+				comment = ""
 			})
 			return "parse_top_level"
 		if tokens[0] == "extends": # and tokens.size() == 2:
 			state.elements.append({
 				type = "extends",
-				value = tokens[1]
+				comment = tokens[1]
 			})
 			# everyting after extends is parsed with main routine
 			return "parse_acc"
@@ -223,7 +236,7 @@ func parse_top_level(line, state):
 				var title = collect(2, tokens)
 				state.elements.append({
 					type = "title",
-					value = title
+					comment = title
 				})
 				return "parse_top_level"
 			else:
@@ -238,16 +251,16 @@ func parse_top_level(line, state):
 
 ## Create new element or append if previous
 ## has the same type.
-func append_or_create(state, type, value):
+func append_or_create(state, type, comment):
 	if state.elements.size() != 0:
 		var prev = state.elements[state.elements.size()-1]
 		if prev != null:
 			if prev.type == type:
-				prev.value.append(value)
+				prev.comment.append(comment)
 				return
 	state.elements.append({
 		type = type,
-		value = [value]
+		comment = [comment]
 	})
 	
 ## If type of previous element equal param, it's changed to newtype
@@ -263,7 +276,7 @@ func change_type_or_create(state, type, newtype, signature, name):
 		else:
 			state.elements.append({
 				type = newtype,
-				value = [],
+				comment = [],
 				signature = signature,
 				name = name
 			})
@@ -293,7 +306,7 @@ func match_top_level(line):
 ## - 0 - whole match
 ## - 1 - editor hint if any
 ## - 2 - name
-## - 3 - default value if any
+## - 3 - default comment if any
 func match_export(line):
 	var reg = RegEx.new()
 	reg.compile("export\\s?(?:\\((.+)\\))?\\svar\\s([\\w_-]+)(?:\\s?=([^#]+))?")
@@ -341,8 +354,20 @@ func match_indent(line):
 	tab.compile("^\\t(.*)")
 	if tab.find(line) == 0:
 		return tab.get_capture(1)
-	else:
-		return null
+	else: return null
+		
+## Match function definiton
+## Returns array of capture groups:
+## - 0 - whole match
+## - 1 - static or empty string
+## - 2 - function name
+## - 3 - params
+func match_method(line):
+	var reg = RegEx.new()
+	reg.compile("(static\\s)?func\\s([\\w\\d_-]+)\\((.*)\\):")
+	if reg.find(line) == 0:
+		return Array(reg.get_captures())
+	else: return null
 	
 #============#
 # Generators #
@@ -350,6 +375,98 @@ func match_indent(line):
 
 class MarkdownGenerator:
 	var state
+	var result = []
+	func _init(state):
+		self.state = state
+	func get_file_name():
+		return "%s/%s.md" % [ state.dir, state.output ]
+	func generate_document():
+		# collect
+		var title
+		var ext
+		var file_doc
+		var sorted = {}
+		for v in state.elements:
+			if v.type == "title":
+				title = v.comment
+			elif v.type == "file_documentation":
+				file_doc = v.comment
+			elif v.type == "extends":
+				ext = v.comment
+			else:
+				if not v.comment.empty():
+					if not sorted.has(v.type):
+						sorted[v.type] = []
+					sorted[str(v.type)].append(v)
+		
+		# generate
+		_header(title)
+		_paragraph("%s - extends `%s`" % [title, state.file])
+		_paragraph(file_doc)
+		
+		_section("Exports", "export", sorted)
+		_section("Constants", "constant", sorted)
+		_section("Variables", "variable", sorted)
+		_section("Methods", "method", sorted)
+	
+	
+	func save():
+		var f = File.new()
+		f.open(get_file_name(), File.WRITE)
+		if not f.is_open():
+			print("An error occurred when trying to create %s" % get_file_name())
+		for l in result:
+			f.store_line(l)
+		f.close()
+	func _header(text, level=1):
+		var r = ""
+		for i in range(level):
+			r += "#"
+		r += " %s" % text
+		result.append(r)
+		
+	func _paragraph(arr):
+		if typeof(arr) == TYPE_ARRAY:
+			for l in arr:
+				result.append(l)
+		else: result.append(arr)
+		result.append("")
+		
+	func _quote(text):
+		result.append("> %s" % text)
+		result.append("")
+		
+	func _src(arr):
+		result.append("```gdscript")
+		if typeof(arr) == TYPE_ARRAY:
+			for l in arr:
+				result.append(l)
+		else: result.append(arr)
+		result.append("```")
+		
+	func _section(name, key, dict):
+		if dict.has(key):
+			_header(name, 2)
+			for v in dict[key]:
+				if v.type == "method":
+					var s = ''
+					if v.has("static_func"):
+						s += "**static**"
+					s += v.name
+					if v.has("params"):
+						for p in v.params:
+							s += " `%s`" % p
+#						_header("Parameters", 4)
+#						_list(v.params, "`")
+					_header(s, 3)
+				else:
+					_header(v.name, 3)
+				_paragraph(v.comment)
+				
+	func _list(arr, wrap=''):
+		for e in arr:
+			result.append("- %s%s%s" % [wrap, e, wrap])
+		result.append("")
 
 ## Basic generator for docgen
 ## emits single markdown object witch is dump of parser state
