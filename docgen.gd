@@ -240,7 +240,7 @@ func parse_top_level(line, state):
 				})
 				return "parse_top_level"
 			else:
-				append_or_create(state, "file_documentation", collect(1, tokens) + "\n")
+				append_or_create(state, "file_documentation", collect(1, tokens))
 				return "parse_top_level"
 	return "parse_top_level"
 			
