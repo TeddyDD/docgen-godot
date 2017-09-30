@@ -1,0 +1,24 @@
+# Created by https://www.gitignore.io/api/linux,emacs
+
+### Emacs ###
+# -*- mode: gitignore; -*-
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# projectiles files
+.projectile
+projectile-bookmarks.eld
+
+### Godot  and project related ###
+engine.cfg
+doc/*.json
+*.flags
+
+# I use Node2d.tscn and Node2d.gd for quick tests - it's convenient
+Node*
